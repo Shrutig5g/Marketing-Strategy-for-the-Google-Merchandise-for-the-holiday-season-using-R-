@@ -1,0 +1,592 @@
+---
+title: "R Project"
+author: "Shruti"
+date: "12/8/2018"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(data.table)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(magrittr)
+library(lubridate)
+library(purrr)
+library(ggplot2)
+library(gridExtra)
+library(countrycode)
+library(highcharter)
+library(ggExtra)
+```
+
+################################# Data tidying and data wrangling ##############################
+
+```{r}
+
+train_Data <- read.csv("training_RAW.csv")
+
+# Separating the data in customDimension column
+train_custom <- data.frame(train_Data$customDimensions)
+
+colnames(train_custom) <- c("AllValues")
+
+train_custom$AllValues <- lapply(train_custom$AllValues, as.character)
+
+train_custom$AllValues <- gsub("[\\[\"]", "", train_custom$AllValues)
+train_custom$AllValues <- gsub("]", "", train_custom$AllValues)
+train_custom$AllValues <- gsub("[\\{}\"]", "", train_custom$AllValues)
+train_custom$AllValues <- gsub("[\\''\"]", "", train_custom$AllValues)
+
+train_custom <- data.frame(separate(train_custom, AllValues,c("index", "value"), sep = ","))
+
+train_custom <- data.frame(apply(train_custom, 2, function(y) (gsub("(.*: )", "", y))))
+```
+
+
+```{r}
+# Separating the data in device column
+train_device <- data.frame(train_Data$device)
+
+colnames(train_device) <- c("AllValues")
+
+train_device$AllValues <- lapply(train_device$AllValues, as.character)
+
+train_device$AllValues <- gsub("[\\{}\"]", "", train_device$AllValues)
+
+train_device <- data.frame(separate(train_device, AllValues,c("browser", "browserVersion","browserSize","operatingSystem","operatingSystemVersion","isMobile","mobileDeviceBranding","mobileDeviceModel","modelInputSelector","mobileDeviceInfo","mobileDeviceMarketingTeam","flashVersion","language","screenColors","screenResolution","deviceCategory"), sep = ","))
+
+train_device <- apply(train_device, 2, function(y) (gsub("(.*: )", "", y)))
+
+train_device[ train_device == "not available in demo dataset" ] <- NA
+
+train_device <- as.data.frame(train_device)
+
+train_device <- train_device[ , -which(names(train_device) %in% c("browserVersion","operatingSystemVersion","browserSize","mobileDeviceBranding","mobileDeviceModel","mobileDeviceInfo","mobileDeviceMarketingTeam","modelInputSelector","flashVersion","language","screenColors","screenResolution", "isMobile"))]
+
+train_device <- as.data.frame(train_device)
+
+```
+
+
+```{r}
+# Separating the data in geoNetwork column
+train_geoNetwork <- data.frame(train_Data$geoNetwork)
+
+colnames(train_geoNetwork) <- c("AllValues")
+
+train_geoNetwork$AllValues <- lapply(train_geoNetwork$AllValues, as.character)
+
+train_geoNetwork$AllValues <- gsub("[\\{}\"]", "", train_geoNetwork$AllValues)
+
+train_geoNetwork$AllValues <- gsub(",MA,", "-MA,", train_geoNetwork$AllValues)
+train_geoNetwork$AllValues <- gsub(",IA,", "-IA,", train_geoNetwork$AllValues)
+
+train_geoNetwork <- data.frame(separate(train_geoNetwork, AllValues,c("continent", "subContinent","country","region","metro","city","cityId","networkDomain","latitude","longitude","networkLocation"), sep = ","))
+
+train_geoNetwork <- apply(train_geoNetwork, 2, function(y) (gsub("(.*: )", "", y)))
+train_geoNetwork[ train_geoNetwork == "not available in demo dataset" ] <- NA
+train_geoNetwork[ train_geoNetwork == "(not set)" ] <- NA
+train_geoNetwork[ train_geoNetwork == "unknown.unknown" ] <- NA
+
+train_geoNetwork <- as.data.frame(train_geoNetwork)
+
+train_geoNetwork <- train_geoNetwork[ , -which(names(train_geoNetwork) %in% c("cityId","latitude","longitude","networkLocation"))]
+
+```
+
+
+```{r}
+# Separating the data in trafficSource column
+train_trafficSource<- data.frame(train_Data$trafficSource)
+
+colnames(train_trafficSource) <- c("AllValues")
+
+train_trafficSource$AllValues <- lapply(train_trafficSource$AllValues, as.character)
+
+train_trafficSource$AllValues <- gsub("[\\{}\"]", "", train_trafficSource$AllValues)
+
+train_trafficSource <- as.data.frame(train_trafficSource)
+train_trafficSource$campaign <- str_match(train_trafficSource$AllValues, "campaign: (.*?),")[,2]
+train_trafficSource$source <- str_match(train_trafficSource$AllValues, "source: (.*?),")[,2]
+train_trafficSource$medium <- str_match(train_trafficSource$AllValues, "medium: (.*?),")[,2]
+train_trafficSource$criteriaParameters <- str_match(train_trafficSource$AllValues, "criteriaParameters: (.*?)(?:,|$)")[,2]
+train_trafficSource$gclId <- str_match(train_trafficSource$AllValues, "gclId: (.*?),")[,2]
+train_trafficSource$adNetworkType <- str_match(train_trafficSource$AllValues, "adNetworkType: (.*?),")[,2]
+train_trafficSource$isVideoAd <- str_match(train_trafficSource$AllValues, "isVideoAd: (.*?)$")[,2]
+train_trafficSource$isTrueDirect <- str_match(train_trafficSource$AllValues, "isTrueDirect: (.*?)$")[,2]
+train_trafficSource$referralPath <- str_match(train_trafficSource$AllValues, "referralPath: (.*?),")[,2]
+
+train_trafficSource <- train_trafficSource[ , -which(names(train_trafficSource) %in% c("AllValues"))]
+train_trafficSource[ train_trafficSource == "not available in demo dataset" ] <- NA
+train_trafficSource[ train_trafficSource == "(not set)" ] <- NA
+train_trafficSource[ train_trafficSource == "(not provided)" ] <- NA
+
+train_trafficSource <- train_trafficSource[ , -which(names(train_trafficSource) %in% c("criteriaParameters"))]
+
+```
+
+```{r}
+# Separating the data in totals column
+train_totals <- data.frame(train_Data$totals)
+
+colnames(train_totals) <- c("AllValues")
+
+train_totals$AllValues <- lapply(train_totals$AllValues, as.character)
+
+train_totals$AllValues <- gsub("[\\{}\"]", "", train_totals$AllValues)
+
+train_totals$visits <- str_match(train_totals$AllValues, "visits: (.*?),")[,2]
+train_totals$hits <- str_match(train_totals$AllValues, "hits: (.*?),")[,2]
+train_totals$pageviews <- str_match(train_totals$AllValues, "pageviews: (.*?),")[,2]
+train_totals$bounces <- str_match(train_totals$AllValues, "bounces: (.*?),")[,2]
+train_totals$newVisits <- str_match(train_totals$AllValues, "newVisits: (.*?),")[,2]
+train_totals$sessionQualityDim <- str_match(train_totals$AllValues, "sessionQualityDim: (.*?)^")[,2]
+train_totals$timeOnSite <- str_match(train_totals$AllValues, "timeOnSite: (.*?),")[,2]
+train_totals$transactionRevenue <- str_match(train_totals$AllValues, "transactionRevenue: (.*?),")[,2]
+
+train_totals <- train_totals[ , -which(names(train_totals) %in% c("AllValues"))]
+
+```
+
+```{r}
+
+#Removing columns which have been separated/which is not required for modeling
+training <- train_Data[ , -which(names(train_Data) %in% c("customDimensions", "device", "geoNetwork", "trafficSource", "totals", "hits"))]
+
+#Merging the separated columns 
+training <- mutate(training, serial = 1:nrow(train_Data))
+train_custom <- mutate(train_custom, serial = 1:nrow(train_custom))
+train_device <- mutate(train_device, serial = 1:nrow(train_device))
+train_geoNetwork <- mutate(train_geoNetwork, serial = 1:nrow(train_geoNetwork))
+train_trafficSource <- mutate(train_trafficSource, serial = 1:nrow(train_trafficSource))
+train_totals <- mutate(train_totals, serial = 1:nrow(train_totals)) 
+
+training <- merge(training, train_custom, by.x = c("serial") ,by.y = c("serial"), all = TRUE)
+training <- merge(training, train_device, by.x = c("serial") ,by.y = c("serial"), all = TRUE)
+training <- merge(training, train_geoNetwork, by.x = c("serial"),by.y = c("serial"), all = TRUE)
+training <- merge(training, train_trafficSource, by.x = c("serial"),by.y = c("serial"), all = TRUE)
+training <- merge(training, train_totals, by.x = c("serial"),by.y = c("serial"), all = TRUE)
+```
+
+```{r}
+#Updating the datatype of the columns as required
+training <- transform(training, date = as.Date(date))
+training$transactionRevenue <- as.numeric(training$transactionRevenue)
+training$fullVisitorId <- as.character(training$fullVisitorId)
+training$visitId <- as.character(training$visitId)
+training$pageviews <- as.integer(training$pageviews)
+training$bounces <- as.integer(training$bounces)
+training$newVisits <- as.integer(training$newVisits)
+training$timeOnSite <- as.integer(training$timeOnSite)
+training$isVideoAd <- as.logical(training$isVideoAd)
+training$isTrueDirect <- as.logical(training$isTrueDirect)
+
+```
+
+```{r}
+#Dropping unrequired columns
+training <- training[ , -which(names(training) %in% c("X","serial","socialEngagementType","index","value","isVideoAd"))]
+
+#Adding response variable based on availability of transaction revenue
+training <- mutate(training, Transaction = ifelse(is.na(transactionRevenue),0,1))
+
+training <- transform(training, as.factor(training$Transaction))
+```
+
+```{r}
+#Adding transformed variable week
+training$Week <- as.character(trunc(difftime(training$date,strptime("25.11.2016", format = "%d.%m.%Y"),units="weeks"))+1)
+  
+training <- transform(training, Week = ifelse(is.na(Week),Week,paste("Week ",Week)))
+
+training <- transform(training, Week = as.factor(Week))
+
+```
+
+```{r}
+#Adding transformed variable visithour
+training$visitStartTime <- as_datetime(training$visitStartTime)
+
+training$visithour <- hour(as.POSIXct(training$visitStartTime))
+
+training <- transform(training, visithour = as.factor(visithour))
+
+```
+
+```{r}
+#Updating the source column to take care of redundant values
+training <- transform(training, source = as.character(source))
+
+training$tempSource <- str_detect(training$source, "google")
+training <- transform(training, source = ifelse(tempSource, "google", source))
+
+training$tempSource <- str_detect(training$source, "facebook")
+training <- transform(training, source = ifelse(tempSource, "facebook", source))
+
+training$tempSource <- str_detect(training$source, "youtube")
+training <- transform(training, source = ifelse(tempSource, "youtube", source))
+
+training$tempSource <- str_detect(training$source, "quora")
+training <- transform(training, source = ifelse(tempSource, "quora", source))
+
+training$tempSource <- str_detect(training$source, "baidu")
+training <- transform(training, source = ifelse(tempSource, "baidu", source))
+
+training$tempSource <- str_detect(training$source, "reddit")
+training <- transform(training, source = ifelse(tempSource, "reddit", source))
+
+training$tempSource <- str_detect(training$source, "bing")
+training <- transform(training, source = ifelse(tempSource, "bing", source))
+
+training$tempSource <- str_detect(training$source, "amazon")
+training <- transform(training, source = ifelse(tempSource, "amazon", source))
+
+training$tempSource <- str_detect(training$source, "yahoo")
+training <- transform(training, source = ifelse(tempSource, "yahoo", source))
+
+training$tempSource <- str_detect(training$source, "github")
+training <- transform(training, source = ifelse(tempSource, "github", source))
+
+training$tempSource <- str_detect(training$source, "pinterest")
+training <- transform(training, source = ifelse(tempSource, "pinterest", source))
+
+training$tempSource <- str_detect(training$source, "live.com")
+training <- transform(training, source = ifelse(tempSource, "live.com", source))
+
+training$tempSource <- str_detect(training$source, "ask.com")
+training <- transform(training, source = ifelse(tempSource, "ask.com", source))
+
+training$tempSource <- str_detect(training$source, "vk")
+training <- transform(training, source = ifelse(tempSource, "vk", source))
+
+training_bySource <- summarise(group_by(training,source),count = n())
+
+training <- left_join(training,training_bySource,by="source")
+
+training <- transform(training, source = ifelse(count > 100, source, "Others"))
+
+training <- transform(training, source = as.factor(source))
+
+training <- training[ , -which(names(training) %in% c("tempSource"))]
+
+```
+
+```{r}
+#Updating operating system column value to as "Others" for categories with frequency<100
+training <- transform(training, operatingSystem = as.character(operatingSystem))
+
+training_byOS <- summarise(group_by(training,operatingSystem),count = n())
+
+training <- left_join(training,training_byOS,by="operatingSystem")
+
+training <- transform(training, operatingSystem = ifelse(count > 100, operatingSystem, "Others"))
+
+training <- transform(training, operatingSystem = as.factor(operatingSystem))
+
+```
+
+```{r}
+#Updating browser column value to as "Others" for categories with frequency<100
+training <- transform(training, browser = as.character(browser))
+
+training_byBrowser <- summarise(group_by(training,browser),count = n())
+
+training <- left_join(training,training_byBrowser,by="browser")
+
+training <- transform(training, browser = ifelse(count > 100, browser, "Others"))
+
+training <- transform(training, browser = as.factor(browser))
+
+```
+
+```{r}
+#Updating channel grouping column as NA if it is (Other), as there is only one record with the value
+training <- transform(training, channelGrouping = as.character(channelGrouping))
+
+training <- transform(training, channelGrouping = ifelse(channelGrouping!="(Other)", channelGrouping, NA))
+
+```
+
+################################# Metadata analysis ##############################
+
+```{r}
+training <- training[ , -which(names(training) %in% c("count.x","count.x.x","count.y","count.y.y"))]
+
+metadata1 <- data.frame(sapply(training, function(x) sum(is.na(x))))
+colnames(metadata1) <- c("NAs")
+
+metadata1$column <- rownames(metadata1)
+rownames(metadata1) <- 1:nrow(metadata1)
+
+metadata1 <- metadata1[,c(2,1)]
+
+metadata2 <- data.frame(sapply(training, function(x) sum(!is.na(x))))
+colnames(metadata2) <- c("Availables")
+
+metadata2$column <- rownames(metadata2)
+rownames(metadata2) <- 1:nrow(metadata2)
+
+metadata3 <- data.frame(sapply(training, function(x) typeof(x)))
+colnames(metadata3) <- c("Type")
+
+metadata3$column <- rownames(metadata3)
+rownames(metadata3) <- 1:nrow(metadata3)
+
+metadata <- inner_join(metadata1, metadata2, by = "column")
+metadata <- inner_join(metadata, metadata3, by = "column")
+
+metadata <- mutate(metadata, total = NAs + metadata$Available)
+
+metadata <- gather(metadata, "NAs", "Availables", key = "AvailType", value = "Number")
+
+ggplot(metadata,aes(x = column,fill = AvailType, y = Number)) + 
+    geom_bar(position = "fill", stat = "identity") + coord_flip()
+
+```
+    
+################################# Exploratory data analysis ##############################
+
+```{r}
+#Plotting visitors vs customers
+
+data <- training %>% select(fullVisitorId, transactionRevenue) %>% mutate(revenue = ifelse(is.na(transactionRevenue),0,transactionRevenue))
+
+data <- data %>% select(-transactionRevenue)
+
+new_data <- data %>% mutate(visitorid = format(fullVisitorId, digits = 20)) %>% group_by(visitorid) %>% summarise(visits = n(), Total_Revenue=sum(as.numeric(revenue)))
+
+xx <- new_data %>% transmute(flag = ifelse(Total_Revenue == 0, "Visitors", "Customers")) %>% group_by(flag) %>% count(flag)
+
+ggplot(xx, aes(x=flag, y=n, fill=flag)) + geom_col(position = "stack") + 
+  scale_fill_manual(values=c("lightblue", "lightgreen")) +
+theme_bw() +
+  xlab("")+
+ylab("Count") +
+ggtitle("Visitors vs Customers") +
+labs(fill="")
+
+```
+
+
+```{r}
+#Plotting daily revenues for the period in context for comparision
+TotalRev <- summarise(group_by(training,date), Total_revenue = sum(as.numeric(log(transactionRevenue))))
+
+colnames(TotalRev) <- c("Date", "Total Revenue")
+
+revenue_gt_7.5 <- ifelse(TotalRev$`Total Revenue` >=1000, "More than 750$","Less than 750$")
+
+avg_rev <- mean(TotalRev$`Total Revenue`)
+library(ggrepel)
+
+
+ggplot(filter(TotalRev, !is.na(`Total Revenue`)), aes(x=Date, y=`Total Revenue`))+
+geom_hline(yintercept =avg_rev, color="red") +
+geom_label_repel(aes(label =as.character.Date(Date)), nudge_y = 1, alpha = 0.7, size=2) + 
+scale_fill_manual(values=c("black", "red")) +
+geom_line(size=1) +
+theme_bw() +
+xlab(colnames(TotalRev)[1]) +
+ylab(colnames(TotalRev)[2]) +
+labs(
+  title = "Daily Revenue",
+  caption = "Note: Red horizontal line is the average daily revenue."
+)
+
+```
+
+```{r}
+#Plotting comparision of number of sessions against number of transaction per device and operating system
+
+g1 <-  training %>%
+  filter(!is.na(operatingSystem), !is.na(deviceCategory))%>%
+  group_by(operatingSystem,deviceCategory)%>%
+  summarise(n = n())%>%
+  ggplot(aes(x=reorder(operatingSystem, n), y=n, fill = deviceCategory)) + 
+  geom_bar(stat='identity') + facet_wrap(~deviceCategory,scales = "free_x")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+coord_flip() + 
+  labs(x="Operating system",y = "Number of sessions", title="Number of sessions per operating system and device type", fill = "Device type")
+  
+g2 <-  training %>%
+  filter(!is.na(operatingSystem), !is.na(deviceCategory), !is.na(transactionRevenue))%>%
+  group_by(operatingSystem,deviceCategory)%>%
+  summarise(n = n())%>%
+  ggplot(aes(x=reorder(operatingSystem, n), y=n, fill = deviceCategory)) + 
+  geom_bar(stat='identity') + facet_wrap(~deviceCategory,scales = "free_x")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+coord_flip() +
+  labs(x="Operating system",y = "Number of transactions", title="Number of transactions per operating system and device type", fill = "Device type")
+  
+listPlots <- list(c("g1","g2"))
+l = mget(listPlots[[1]])
+
+ggsave("/Users/manasmohanty/Desktop/plot5.jpeg", arrangeGrob(grobs = l))
+
+```
+
+
+```{r}
+#Plotting pie chart of transaction revenue percentages from different sources
+
+training_model_source <- transform(training, source = as.character(source))
+
+training_model_AllSources <- transform(training_model_source, source = ifelse(source == "(direct)","Direct","Others"))
+
+training_model_otherSource <- filter(training_model_source, source!="(direct)")
+
+revenue_by_source <- summarise(group_by(filter(training_model_AllSources, !is.na(transactionRevenue)),source), revenue = sum(as.numeric(transactionRevenue)))
+
+revenue_by_otherSources <- summarise(group_by(filter(training_model_otherSource, !is.na(transactionRevenue)),source), revenue = sum(as.numeric(transactionRevenue)))
+
+revenue_by_source$Percentage <- round(revenue_by_source$revenue / sum(revenue_by_source$revenue),3)
+
+revenue_by_otherSources$Percentage <- round(revenue_by_otherSources$revenue / sum(revenue_by_otherSources$revenue),3)
+
+revenue_by_otherSources <- transform(revenue_by_otherSources,source = ifelse(Percentage>.1,source,"Others"))
+
+revenue_by_otherSources <- summarise(group_by(revenue_by_otherSources,source), Percentage = sum(Percentage))
+
+library(plotly)
+
+
+p1 <- plot_ly(revenue_by_otherSources, labels = ~source, values = ~Percentage, type = 'pie',
+        textposition = 'inside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~paste( Percentage, ' %'),
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF', width = 1)),
+                      #The 'pull' attribute can also be used to create space between the sectors
+        showlegend = FALSE) %>%
+  layout(title = 'Revenue from other sources',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+
+p2 <- plot_ly(revenue_by_source, labels = ~source, values = ~Percentage, type = 'pie',
+        textposition = 'inside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~paste( Percentage, ' %'),
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF', width = 1)),
+                      #The 'pull' attribute can also be used to create space between the sectors
+        showlegend = FALSE) %>%
+  layout(title = 'Revenue from sources',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+
+```
+
+```{r}
+#Plotting heatmap for transaction revenues generated across the countries in the world
+by_country <- training%>%
+              filter(!is.na(country))%>%
+              group_by(country)%>%
+              summarise(revenue =sum(log(as.numeric(transactionRevenue)), na.rm=TRUE))
+
+training <- transform(training, transactionRevenue = as.numeric(transactionRevenue))
+
+training$transactionRevenue <- ifelse(is.na(training$transactionRevenue),0,log(training$transactionRevenue))
+
+by_country <- summarise(group_by(filter(training,!is.na(country)),country), revenue = sum(transactionRevenue))
+
+by_country$iso3 <- countrycode(by_country$country, origin='country.name', destination='iso3c')
+
+highchart() %>%
+    hc_add_series_map(worldgeojson, by_country, value = 'revenue', joinBy = 'iso3') %>%
+    hc_title(text = 'Total transaction revenue by country') %>%
+    hc_tooltip(useHTML = TRUE, headerFormat = "",
+        pointFormat = "{point.country}: ${point.revenue:.0f}")
+```
+
+################################# Cross-validation and modeling ##############################
+
+```{r}
+
+training_revenue <- filter(training, !is.na(training_model$transactionRevenue))
+
+training_noRevenue <- filter(training, is.na(training_model$transactionRevenue))
+
+number_of_folds <- 5
+
+overall_accuracy <- 0
+    
+true_positive_proportion <- 0
+
+true_negative_proportion <- 0
+
+rmseTotal <- 0
+
+set.seed(1)
+
+splitted_revenue <- split(training_revenue, sample(1:number_of_folds, nrow(training_revenue), replace=T))
+
+splitted_noRevenue <- split(training_noRevenue, sample(1:number_of_folds, nrow(training_noRevenue), replace=T))
+
+  for(i in 1:number_of_folds)
+  {
+    test_data_revenue   <- splitted_revenue[[i]]
+    test_data_noRevenue <- splitted_noRevenue[[i]]
+    
+    test_data <- rbind(test_data_revenue, test_data_noRevenue)
+    
+    k = 1
+    
+    for(j in 1:number_of_folds)
+    {
+      if(j == i){next}
+      
+      
+      if(k==1)
+      {
+        train_data_revenue <- splitted_revenue[[j]]
+        train_data_noRevenue <- splitted_noRevenue[[j]]
+      }
+      else
+      {
+        train_data_revenue <- rbind(train_data_revenue, splitted_revenue[[j]])
+        train_data_noRevenue <- rbind(train_data_noRevenue, splitted_noRevenue[[j]])
+      }
+      
+      k = k + 1
+      
+    }
+    
+    train_data <- rbind(train_data_revenue, train_data_noRevenue)
+    
+    fit_linear <- lm(log(transactionRevenue) ~ Week + visits + visitNumber  + visithour + source + pageviews + operatingSystem + medium + hits + deviceCategory + continent + channelGrouping + browser, data = train_data_revenue)
+    
+    fit_logit <- glm(Transaction ~ Week + visits + visitNumber  + visithour + source + pageviews + operatingSystem + medium + hits + deviceCategory + continent + channelGrouping + browser,
+family=binomial(link="logit"), data=train_data)
+    
+    
+    test_data$Predicted <- predict(fit_logit, test_data, type="response")
+
+    test_data <- transform(test_data, Predicted = ifelse(test_data$Predicted > 0.03, 1, 0))
+    
+    overall_accuracy <- overall_accuracy + summarise(filter(test_data,!is.na(Transaction), !is.na(Predicted)), mean(Predicted == Transaction))
+    
+    true_negative_proportion <- true_negative_proportion + summarise(filter(test_data, !is.na(Transaction), !is.na(Predicted), Transaction == 0), mean(Predicted == Transaction))
+    
+    true_positive_proportion <- true_positive_proportion + summarise(filter(test_data, !is.na(Transaction), !is.na(Predicted), Transaction == 1), mean(Predicted == Transaction))
+    
+    rmseTotal <- rmseTotal + rmse(fit_linear, filter(test_data, !is.na(Transaction), !is.na(Predicted), Transaction == 1, Transaction == Predicted))
+    
+  }
+
+  overall_accuracy <- overall_accuracy/number_of_folds
+  
+  true_positive_proportion <- true_positive_proportion/number_of_folds
+  
+  true_negative_proportion <- true_negative_proportion/number_of_folds
+  
+  rmseTotal <- rmseTotal/number_of_folds
+```
